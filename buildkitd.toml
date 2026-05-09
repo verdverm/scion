@@ -1,0 +1,7 @@
+[registry."host.bridge.internal:5000"]
+  http = true
+  insecure = true
+[registry."localhost:5000"]
+  http = true
+  insecure = true
+
