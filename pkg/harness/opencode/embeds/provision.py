@@ -366,8 +366,52 @@ def _provision(manifest: dict[str, Any]) -> int:
     # transports are best-effort warn-and-skip).
     _apply_mcp_servers(bundle)
 
+    # Inject the Scion status bridge plugin into OpenCode's plugin directory.
+    # The plugin intercepts OpenCode events and forwards them to sciontool hook
+    # so the Scion Hub can track agent status in real-time. Only activates when
+    # SCION_AGENT_ID is set (i.e., inside a Scion container).
+    _inject_scion_plugin(bundle)
+
     print(f"opencode provision: method={method}", file=sys.stderr)
     return EXIT_OK
+
+
+def _inject_scion_plugin(bundle: str) -> None:
+    """Copy the Scion status bridge plugin into OpenCode's plugin directory.
+
+    The plugin file is embedded alongside provision.py in the harness bundle.
+    It is installed to ~/.config/opencode/plugins/scion-plugin.js so that
+    OpenCode loads it on startup. The plugin is a no-op when SCION_AGENT_ID
+    is not set, making it safe for non-Scion usage.
+    """
+    plugin_src = os.path.join(bundle, "scion-plugin.js")
+    if not os.path.isfile(plugin_src):
+        # Plugin not bundled — skip silently (non-Scion image or old bundle)
+        return
+
+    plugins_dir = _expand(os.path.join("~", ".config", "opencode", "plugins"))
+    try:
+        os.makedirs(plugins_dir, exist_ok=True)
+    except OSError as exc:
+        print(
+            f"opencode provision: failed to create plugins dir {plugins_dir}: {exc}",
+            file=sys.stderr,
+        )
+        return
+
+    plugin_dst = os.path.join(plugins_dir, "scion-plugin.js")
+    try:
+        import shutil
+        shutil.copy2(plugin_src, plugin_dst)
+        print(
+            f"opencode provision: installed scion-plugin.js to {plugin_dst}",
+            file=sys.stderr,
+        )
+    except OSError as exc:
+        print(
+            f"opencode provision: failed to install scion-plugin.js: {exc}",
+            file=sys.stderr,
+        )
 
 
 def _dispatch(manifest: dict[str, Any]) -> int:

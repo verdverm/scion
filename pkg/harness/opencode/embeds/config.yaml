@@ -44,12 +44,12 @@ command:
   task_position: before_base_args
 capabilities:
   limits:
-    max_turns: { support: "no", reason: "This harness has no hook dialect for turn events" }
-    max_model_calls: { support: "no", reason: "This harness has no hook dialect for model events" }
+    max_turns: { support: "yes", reason: "Supported via scion-plugin.js event bridge" }
+    max_model_calls: { support: "yes", reason: "Supported via scion-plugin.js event bridge" }
     max_duration: { support: "yes" }
   telemetry:
     enabled: { support: "yes" }
-    native_emitter: { support: "no", reason: "Native telemetry forwarding is not wired for this harness" }
+    native_emitter: { support: "yes", reason: "Forwarded via scion-plugin.js event bridge" }
   prompts:
     system_prompt: { support: "partial", reason: "System prompt is downgraded into AGENTS.md" }
     agent_instructions: { support: "yes" }
@@ -57,7 +57,7 @@ capabilities:
     api_key: { support: "yes" }
     auth_file: { support: "yes" }
     oauth_token: { support: "no" }
-    vertex_ai: { support: "no", reason: "Vertex AI auth is not supported for this harness" }
+    vertex_ai: { support: "yes" }
   mcp:
     stdio: { support: "yes" }
     sse: { support: "yes" }
