@@ -2,14 +2,14 @@
 
 ## Problem Statement
 
-OpenCode is used as a harness in Scion (via `pkg/harness/opencode.go`), but there is **no bridge** between OpenCode's plugin event system and Scion's status/event infrastructure. When an agent runs OpenCode inside a Scion container, the Scion Hub has no visibility into what OpenCode is doing. This breaks the core Scion observability model.
+OpenCode is used as a harness in Scion (via `pkg/harness/opencode.go`), but the bridge between OpenCode's plugin event system and Scion's status/event infrastructure was untested. When an agent runs OpenCode inside a Scion container, the Scion Hub needs visibility into what OpenCode is doing for the core Scion observability model to work.
 
 Specifically:
 - The `sciontool hook` system expects normalized events (`tool-start`, `tool-end`, `model-start`, `agent-start`, etc.) from harnesses like Claude Code and Gemini CLI
 - OpenCode has no built-in hook dialect — it is not configured as one in `pkg/sciontool/hooks/dialects/`
-- OpenCode's plugin system (TypeScript hooks in the OpenCode process) fires events like `tool.execute.before`, `session.status`, `message.updated` — but these never reach Scion's `agent-info.json` or Hub API
-- The OpenCode harness in Scion declares `limits.max_turns: no` and `limits.max_model_calls: no` because "this harness has no hook dialect for turn events"
-- The OpenCode harness declares `telemetry.native_emitter: no` because "native telemetry forwarding is not wired"
+- OpenCode's plugin system (TypeScript hooks in the OpenCode process) fires events like `tool.execute.before`, `session.status`, `message.updated` — these need to reach Scion's `agent-info.json` or Hub API
+- The OpenCode harness in Scion declares `limits.max_turns: yes` and `limits.max_model_calls: yes` (via event bridge)
+- The OpenCode harness declares `telemetry.native_emitter: yes` (forwarded via event bridge)
 
 ## Current Architecture (Implemented)
 
@@ -71,7 +71,7 @@ The HubHandler only forwards assistant text on `agent-end` events. OpenCode's pl
 
 | Component | Status | File |
 |---|---|---|
-| **scion-plugin.js** | Done | `pkg/harness/opencode/embeds/scion-plugin.js` — Full event bridge. Debouncing (200ms tools, 2s messages), heartbeat (45s), sticky activity awareness, 20+ event handlers. |
+| **scion-plugin.js** | Done + verified | `pkg/harness/opencode/embeds/scion-plugin.js` — Full event bridge. Debouncing (200ms tools, 2s messages), heartbeat (45s), sticky activity awareness, 20+ event handlers. Verified loaded in running agent (shows as "1 Plugin: scion-plugin" in OpenCode UI). |
 | **OpenCode dialect** | Done | `pkg/sciontool/hooks/dialects/opencode.go` — Parses nested + flat formats. Registered in `registry.go`. |
 | **Hook command** | Done | `--dialect=opencode` accepted in `hook.go` help text. |
 | **Provision script** | Done | `pkg/harness/opencode/embeds/provision.py` — Handles auth (api-key, auth-file, vertex-ai, none), MCP server translation, plugin injection (`_inject_scion_plugin`). |
@@ -79,6 +79,7 @@ The HubHandler only forwards assistant text on `agent-end` events. OpenCode's pl
 | **Capabilities** | Done | `max_turns: yes`, `max_model_calls: yes`, `native_emitter: yes`, `vertex_ai: yes`, `none: yes`, MCP stdio/sse/streamable-http: yes. |
 | **Dialect tests** | Done | `opencode_test.go` — Flat + nested formats, heartbeat, tool success/error. |
 | **Parity tests** | Done | `opencode_parity_test.go` — Embed seeding, provision staging, script integration (happy path, MCP, no-creds). |
+| **Agent lifecycle** | Done + verified | Agent starts, runs tasks, Hub shows running/working status with updating lastActivityEvent. |
 
 ### Known Gaps
 
@@ -86,15 +87,15 @@ The HubHandler only forwards assistant text on `agent-end` events. OpenCode's pl
 
 2. **Turn counting doesn't work (Gap 4 partial)** — The `LimitsHandler` only increments on `agent-end` (turns) and `model-end` (model calls). The OpenCode plugin never emits these events; it sends `session-end` instead. **`max_turns` and `max_model_calls` limits are ineffective for OpenCode agents.**
 
-3. **Plugin loading unverified** — The plugin is deployed to `~/.config/opencode/plugins/scion-plugin.js` but there is no reference in `opencode.json` to tell OpenCode to load it. Whether OpenCode auto-discovers `.js` files in a `plugins/` directory is unknown — this is an untested assumption.
+3. **No test for plugin seeding** — `TestOpenCodeEmbedsSeedRootSupportFiles` checks for `provision.py` and `opencode.json` but **doesn't verify the plugin file is seeded** to `home/.config/opencode/scion-plugin.js`. If the seeding logic changes, plugin deployment could silently break.
 
-4. **No test for plugin seeding** — `TestOpenCodeEmbedsSeedRootSupportFiles` checks for `provision.py` and `opencode.json` but **doesn't verify the plugin file is seeded** to `home/.config/opencode/scion-plugin.js`. If the seeding logic changes, plugin deployment could silently break.
+4. **`_activity` event is dead weight** — The plugin sends `_activity` events for heartbeats (line 128 of scion-plugin.js), and the dialect normalizes `_activity` → `""` (empty name). The StatusHandler's `eventToPhaseActivity` returns `nil` for empty names, so the event is silently dropped. The actual heartbeats are the `model-start` + `model-end` pairs sent separately (lines 182-183).
 
-5. **`_activity` event is dead weight** — The plugin sends `_activity` events for heartbeats (line 128 of scion-plugin.js), and the dialect normalizes `_activity` → `""` (empty name). The StatusHandler's `eventToPhaseActivity` returns `nil` for empty names, so the event is silently dropped. The actual heartbeats are the `model-start` + `model-end` pairs sent separately (lines 182-183).
+5. **No Hub API direct fallback (Phase 5 never implemented)** — The original design proposed dual-path: shell to `sciontool hook` + direct Hub API calls as fallback. Only the `sciontool hook` path exists. If `sciontool` is unavailable in the container, the plugin silently fails.
 
-6. **No Hub API direct fallback (Phase 5 never implemented)** — The original design proposed dual-path: shell to `sciontool hook` + direct Hub API calls as fallback. Only the `sciontool hook` path exists. If `sciontool` is unavailable in the container, the plugin silently fails.
+6. **No `agent-end` event ever emitted** — The canonical event for turn counting, assistant text forwarding, and post-agent cleanup. OpenCode uses `session.deleted` → `session-end` instead.
 
-7. **No `agent-end` event ever emitted** — The canonical event for turn counting, assistant text forwarding, and post-agent cleanup. OpenCode uses `session.deleted` → `session-end` instead.
+7. **sciontool heartbeat fails on macOS** — `SCION_HUB_ENDPOINT` defaults to `http://localhost:9810` inside containers, which is unreachable from Docker containers on macOS (needs `host.docker.internal`). This causes repeated heartbeat errors but doesn't affect agent execution. Configurable via `server.broker.container_hub_endpoint` in `~/.scion/settings.yaml`.
 
 ### What Works vs What Doesn't — Quick Reference
 
@@ -205,9 +206,9 @@ OpenCode's plugin events don't map 1:1 to Scion's hook events:
 - `message.updated` fires per-chunk (streaming), debounced at 2s to reduce noise
 - No `agent-end` event — means turn counting and assistant text forwarding are broken
 
-### Risk 4: Plugin Loading Uncertainty
+### Risk 4: Plugin Loading — RESOLVED
 
-There is no verified mechanism for OpenCode to discover and load `scion-plugin.js` from `~/.config/opencode/plugins/`. The plugin may be silently ignored if OpenCode doesn't support auto-discovery of `.js` files in a `plugins/` directory. This is the single biggest risk — if the plugin doesn't load, the entire observability bridge is silent.
+OpenCode auto-discovers `.js` files in `~/.config/opencode/plugins/`. Verified in running agent: plugin shows as "1 Plugin: scion-plugin" in OpenCode UI. No config reference needed in `opencode.json`.
 
 ### Risk 5: Auth Token Management
 
@@ -215,35 +216,35 @@ The plugin uses `sciontool hook` which handles auth internally. No direct Hub AP
 
 ## Open Questions
 
-1. **Is the plugin actually loaded by OpenCode?**
-   - Need to verify OpenCode discovers `~/.config/opencode/plugins/*.js` files
-   - If not, we need to add a plugin reference to `opencode.json` or use OpenCode's npm plugin mechanism
-   - **Action:** Test with a real agent to confirm plugin fires
-
-2. **Should LimitsHandler also process `session-end`?**
+1. **Should LimitsHandler also process `session-end`?**
    - Treating `session-end` as a turn completion would enable `max_turns` for OpenCode
    - Model call counting remains harder since OpenCode doesn't expose LLM call boundaries
    - **Recommendation:** Add `session-end` → turn increment in LimitsHandler
 
-3. **Should we add `agent-end` to the plugin?**
+2. **Should we add `agent-end` to the plugin?**
    - Would fix both turn counting and assistant text forwarding
    - Requires the plugin to track the assistant's final response text from `message.updated` events
    - **Recommendation:** Add `agent-end` on `session.deleted` with collected assistant text
 
-4. **Should we add a native hook emission mode to OpenCode?**
+3. **Should we add a native hook emission mode to OpenCode?**
    - Adding `--scion-hooks` flag to OpenCode that pipes events to stdout in `sciontool hook` JSON format
    - Would eliminate the plugin and `$` shelling overhead
    - Requires changes to OpenCode core (may not be feasible if OpenCode is a dependency, not a fork)
    - **Recommendation:** Defer; the plugin approach works for now
 
-5. **Should we implement Hub API direct fallback (Phase 5)?**
+4. **Should we implement Hub API direct fallback (Phase 5)?**
    - Currently the plugin is a single path: if `sciontool` is unavailable, events are lost
    - Direct Hub API calls would provide resilience
    - **Recommendation:** Low priority; `sciontool` is guaranteed in Scion containers
 
-6. **Should we add a test for plugin seeding?**
+5. **Should we add a test for plugin seeding?**
    - `TestOpenCodeEmbedsSeedRootSupportFiles` doesn't verify `scion-plugin.js` lands in the harness-config tree
    - **Recommendation:** Add assertion in the existing test
+
+6. **Should we document the `container_hub_endpoint` setting for macOS?**
+   - `server.broker.container_hub_endpoint` in `~/.scion/settings.yaml` defaults to `http://172.17.0.1:9810` (Linux bridge)
+   - macOS needs `http://host.docker.internal:9810`
+   - **Recommendation:** Add to localhost workflows doc
 
 ## Appendix: Reference — Claude Dialect Normalization
 
