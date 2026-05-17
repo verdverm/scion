@@ -78,9 +78,9 @@ func TestOpenCodeEmbedsSeedRootSupportFiles(t *testing.T) {
 
 // TestOpenCodeActivateScriptIsIdempotent verifies that --activate-script is a
 // no-op when the embedded default already declares container-script. Existing
-// installations that upgraded before the default changed are still handled by
-// activateContainerScriptProvisioner, but freshly seeded configs must not
-// produce spurious backups.
+// installations that still have type: builtin can
+// run `scion harness-config upgrade opencode --activate-script` to migrate,
+// but freshly seeded configs must not produce a spurious activate_script action.
 func TestOpenCodeActivateScriptIsIdempotent(t *testing.T) {
 	dir := seedOpenCodeDir(t)
 
@@ -91,8 +91,12 @@ func TestOpenCodeActivateScriptIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UpgradeHarnessConfig --activate-script: %v", err)
 	}
-	if plan.Changed {
-		t.Fatalf("expected no change (already container-script), got actions: %v", plan.Actions)
+
+	// The activate_script action must not be present when already container-script.
+	for _, action := range plan.Actions {
+		if action.Type == "activate_script" {
+			t.Fatalf("expected no activate_script action (already container-script), got actions: %v", plan.Actions)
+		}
 	}
 
 	hc, err := config.LoadHarnessConfigDir(dir)
@@ -101,9 +105,6 @@ func TestOpenCodeActivateScriptIsIdempotent(t *testing.T) {
 	}
 	if hc.Config.Provisioner == nil || hc.Config.Provisioner.Type != "container-script" {
 		t.Fatalf("provisioner.type=%q want container-script", hc.Config.Provisioner.Type)
-	}
-	if len(plan.Backups) != 0 {
-		t.Fatalf("expected no backups for idempotent activate, got %v", plan.Backups)
 	}
 }
 

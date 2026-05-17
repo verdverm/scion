@@ -33,6 +33,7 @@ import (
 	"github.com/GoogleCloudPlatform/scion/pkg/harness"
 	"github.com/GoogleCloudPlatform/scion/pkg/runtime"
 	"github.com/GoogleCloudPlatform/scion/pkg/util"
+	"github.com/google/uuid"
 )
 
 var ErrTmuxBinaryNotFound = errors.New("tmux binary not found")
@@ -562,6 +563,9 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 		}
 	}
 	opts.Env["SCION_CLI_MODE"] = "agent"
+	if _, ok := opts.Env["SCION_AGENT_ID"]; !ok {
+		opts.Env["SCION_AGENT_ID"] = uuid.New().String()
+	}
 
 	// Determine whether hub is explicitly disabled in grove settings.
 	// When disabled, we suppress hub env var injection from agent config
