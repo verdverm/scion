@@ -728,6 +728,143 @@ func TestHubHandler_AssistantTextForwarding(t *testing.T) {
 	})
 }
 
+// TestHubHandler_SessionEndAssistantText tests that session-end events
+// with assistant_text forward the text to the outbound-message endpoint.
+func TestHubHandler_SessionEndAssistantText(t *testing.T) {
+	t.Run("forwards assistant text from session-end", func(t *testing.T) {
+		tmpHome := t.TempDir()
+		origHome := os.Getenv("HOME")
+		os.Setenv("HOME", tmpHome)
+		defer os.Setenv("HOME", origHome)
+
+		var mu sync.Mutex
+		var outboundMsg string
+		var outboundType string
+		statusCalls := 0
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			mu.Lock()
+			defer mu.Unlock()
+
+			var payload map[string]interface{}
+			json.NewDecoder(r.Body).Decode(&payload)
+
+			if msg, ok := payload["msg"].(string); ok {
+				outboundMsg = msg
+				outboundType, _ = payload["type"].(string)
+			} else {
+				statusCalls++
+			}
+
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{}`))
+		}))
+		defer server.Close()
+
+		os.Setenv("SCION_HUB_ENDPOINT", server.URL)
+		os.Setenv("SCION_AUTH_TOKEN", "test-token")
+		os.Setenv("SCION_AGENT_ID", "test-agent-id")
+		defer func() {
+			os.Unsetenv("SCION_HUB_ENDPOINT")
+			os.Unsetenv("SCION_HUB_URL")
+			os.Unsetenv("SCION_AUTH_TOKEN")
+			os.Unsetenv("SCION_AGENT_ID")
+		}()
+
+		handler := NewHubHandler()
+		if handler == nil {
+			t.Fatal("Expected handler to be created")
+		}
+
+		err := handler.Handle(&hooks.Event{
+			Name: hooks.EventSessionEnd,
+			Data: hooks.EventData{
+				AssistantText: "Done with the task",
+				Source:        "opencode",
+			},
+		})
+		if err != nil {
+			t.Fatalf("Handle returned error: %v", err)
+		}
+
+		mu.Lock()
+		defer mu.Unlock()
+		if outboundMsg != "Done with the task" {
+			t.Errorf("Expected outbound msg %q, got %q", "Done with the task", outboundMsg)
+		}
+		if outboundType != "assistant-reply" {
+			t.Errorf("Expected outbound type %q, got %q", "assistant-reply", outboundType)
+		}
+		if statusCalls != 1 {
+			t.Errorf("Expected 1 status call (stopped), got %d", statusCalls)
+		}
+	})
+
+	t.Run("no outbound message when assistant_text is empty", func(t *testing.T) {
+		tmpHome := t.TempDir()
+		origHome := os.Getenv("HOME")
+		os.Setenv("HOME", tmpHome)
+		defer os.Setenv("HOME", origHome)
+
+		var mu sync.Mutex
+		outboundMsg := ""
+		statusCalls := 0
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			mu.Lock()
+			defer mu.Unlock()
+
+			var payload map[string]interface{}
+			json.NewDecoder(r.Body).Decode(&payload)
+
+			if _, ok := payload["msg"].(string); ok {
+				outboundMsg = payload["msg"].(string)
+			} else {
+				statusCalls++
+			}
+
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{}`))
+		}))
+		defer server.Close()
+
+		os.Setenv("SCION_HUB_ENDPOINT", server.URL)
+		os.Setenv("SCION_AUTH_TOKEN", "test-token")
+		os.Setenv("SCION_AGENT_ID", "test-agent-id")
+		defer func() {
+			os.Unsetenv("SCION_HUB_ENDPOINT")
+			os.Unsetenv("SCION_HUB_URL")
+			os.Unsetenv("SCION_AUTH_TOKEN")
+			os.Unsetenv("SCION_AGENT_ID")
+		}()
+
+		handler := NewHubHandler()
+		if handler == nil {
+			t.Fatal("Expected handler to be created")
+		}
+
+		err := handler.Handle(&hooks.Event{
+			Name: hooks.EventSessionEnd,
+			Data: hooks.EventData{
+				AssistantText: "",
+				Source:        "opencode",
+			},
+		})
+		if err != nil {
+			t.Fatalf("Handle returned error: %v", err)
+		}
+
+		mu.Lock()
+		defer mu.Unlock()
+		if outboundMsg != "" {
+			t.Errorf("Expected no outbound msg, got %q", outboundMsg)
+		}
+		if statusCalls != 1 {
+			t.Errorf("Expected 1 status call (stopped), got %d", statusCalls)
+		}
+	})
+}
+
 // TestTruncateMessage tests the truncation helper function.
 func TestTruncateMessage(t *testing.T) {
 	tests := []struct {

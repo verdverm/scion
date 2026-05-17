@@ -74,6 +74,23 @@ func TestOpenCodeEmbedsSeedRootSupportFiles(t *testing.T) {
 	if len(hc.Config.Provisioner.Command) == 0 {
 		t.Error("expected provisioner.command in config.yaml")
 	}
+
+	// scion-plugin.js must be seeded under home/.config/opencode/ so the
+	// in-container provision.py can copy it to the plugins directory.
+	pluginPath := filepath.Join(dir, "home", ".config", "opencode", "scion-plugin.js")
+	if _, err := os.Stat(pluginPath); err != nil {
+		t.Fatalf("expected scion-plugin.js under home/.config/opencode/: %v", err)
+	}
+	pluginBytes, err := os.ReadFile(pluginPath)
+	if err != nil {
+		t.Fatalf("failed to read scion-plugin.js: %v", err)
+	}
+	if !strings.Contains(string(pluginBytes), "SCION_AGENT_ID") {
+		t.Error("scion-plugin.js does not contain expected SCION_AGENT_ID check")
+	}
+	if !strings.Contains(string(pluginBytes), "sendHook") {
+		t.Error("scion-plugin.js does not contain expected sendHook function")
+	}
 }
 
 // TestOpenCodeActivateScriptIsIdempotent verifies that --activate-script is a

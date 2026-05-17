@@ -84,8 +84,14 @@ func NewLimitsHandlerWithPath(maxTurns, maxModelCalls int, limitsPath string) *L
 // Handle processes a hook event and increments the appropriate counter.
 // On agent-end: increments turn count, checks max_turns.
 // On model-end: increments model call count, checks max_model_calls.
+// Heartbeat events (marked with _scion_heartbeat in raw data) are skipped.
 func (h *LimitsHandler) Handle(event *hooks.Event) error {
 	if h == nil {
+		return nil
+	}
+
+	// Skip heartbeat events — they are not real model calls.
+	if isHeartbeatEvent(event) {
 		return nil
 	}
 
@@ -105,6 +111,21 @@ func (h *LimitsHandler) Handle(event *hooks.Event) error {
 	default:
 		return nil
 	}
+}
+
+// isHeartbeatEvent checks if the event is a synthetic heartbeat (not a real
+// model call or agent turn). The OpenCode plugin marks heartbeat model-start
+// / model-end events with _scion_heartbeat: true in the raw payload.
+func isHeartbeatEvent(event *hooks.Event) bool {
+	if event.Data.Raw == nil {
+		return false
+	}
+	if v, ok := event.Data.Raw["_scion_heartbeat"]; ok {
+		if b, ok := v.(bool); ok && b {
+			return true
+		}
+	}
+	return false
 }
 
 // InitLimitsFile creates or resets the agent-limits.json file.

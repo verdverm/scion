@@ -106,8 +106,17 @@ async function sendHook(client, name, data = {}, logTag = "") {
     fs.writeFileSync(tmpPath, payload)
 
     // Fire-and-forget: don't await to avoid blocking the event handler.
-    // Cleanup temp file after a delay.
-    client.$`timeout ${HOOK_TIMEOUT_MS} sh -c 'cat $1 | sciontool hook --dialect=opencode 2>/dev/null; rm -f $1' _ ${tmpPath}`.catch(() => {})
+    // Log errors to the app logger for visibility (not just console.log).
+    client.$`timeout ${HOOK_TIMEOUT_MS} sh -c 'cat $1 | sciontool hook --dialect=opencode 2>/dev/null; rm -f $1' _ ${tmpPath}`.catch(async (err) => {
+      await client.app.log({
+        body: {
+          service: "scion-plugin",
+          level: "error",
+          message: `scion hook failed: ${name}`,
+          extra: { error: String(err)?.message || String(err), name },
+        },
+      })
+    })
   } catch (err) {
     await client.app.log({
       body: {
@@ -179,8 +188,8 @@ async function startHeartbeat(client) {
 
     // Send a lightweight model-start → model-end pair to keep activity alive
     // This maps to thinking → working, which is harmless and keeps last_activity_event fresh
-    await sendHook(client, "model-start", { _heartbeat: true })
-    await sendHook(client, "model-end", { _heartbeat: true })
+    await sendHook(client, "model-start", { _scion_heartbeat: true })
+    await sendHook(client, "model-end", { _scion_heartbeat: true })
   }
 
   timer = setInterval(tick, HEARTBEAT_INTERVAL_MS)
@@ -223,6 +232,9 @@ export const ScionStatusPlugin = async ({ project, client, $, directory, worktre
     },
   })
 
+  // Track assistant text from message.updated events for session-end forwarding
+  let assistantTextParts = []
+
   // Debounced event senders
   const debouncedHook = debounce(sendHook, DEBOUNCE_MS)
   const debouncedMsgHook = debounce(sendHook, MSG_DEBOUNCE_MS)
@@ -241,7 +253,11 @@ export const ScionStatusPlugin = async ({ project, client, $, directory, worktre
 
     "session.deleted": async () => {
       stopHeartbeat(client)
-      await sendHook(client, "session-end", { source: "opencode" })
+      const assistantText = assistantTextParts.filter(Boolean).join("\n\n").slice(0, 65536)
+      await sendHook(client, "session-end", {
+        source: "opencode",
+        assistant_text: assistantText,
+      })
     },
 
     "session.idle": async () => {
@@ -250,12 +266,14 @@ export const ScionStatusPlugin = async ({ project, client, $, directory, worktre
     },
 
     "session.error": async ({ error }) => {
+      stopHeartbeat(client)
       const errorMsg = error ? String(error) : "Unknown error"
+      const assistantText = assistantTextParts.filter(Boolean).join("\n\n").slice(0, 65536)
       await sendHook(client, "session-end", {
         source: "opencode",
         error: truncate(errorMsg, 200),
+        assistant_text: assistantText,
       })
-      stopHeartbeat(client)
     },
 
     // -----------------------------------------------------------------------
@@ -298,6 +316,8 @@ export const ScionStatusPlugin = async ({ project, client, $, directory, worktre
           prompt: truncate(contentStr, 100),
           source: "opencode",
         })
+        // Reset assistant text buffer on new user prompt
+        assistantTextParts = []
       } else if (role === "assistant") {
         // Assistant message → model-start (thinking)
         // This fires when the assistant starts responding
@@ -305,6 +325,8 @@ export const ScionStatusPlugin = async ({ project, client, $, directory, worktre
           prompt: truncate(contentStr, 100),
           source: "opencode",
         })
+        // Collect assistant text for session-end forwarding
+        assistantTextParts.push(contentStr)
       }
     },
 

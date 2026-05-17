@@ -191,6 +191,28 @@ func (h *HubHandler) Handle(event *hooks.Event) error {
 		})
 
 	case hooks.EventSessionEnd:
+		// Forward assistant text from session-end (OpenCode path).
+		// OpenCode doesn't emit agent-end, so session-end is the only
+		// opportunity to surface the assistant's final response.
+		if event.Data.AssistantText != "" {
+			text := event.Data.AssistantText
+			const maxAssistantTextBytes = 64 * 1024
+			if len(text) > maxAssistantTextBytes {
+				text = text[:maxAssistantTextBytes] + "\n[truncated]"
+			}
+
+			msgCtx, msgCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer msgCancel()
+			if msgErr := h.client.SendOutboundMessage(msgCtx, hub.OutboundMessage{
+				Msg:  text,
+				Type: "assistant-reply",
+			}); msgErr != nil {
+				log.Error("Hub: outbound assistant reply from session-end failed: %v", msgErr)
+			} else {
+				log.Debug("Hub: Forwarded assistant reply from session-end (%d bytes)", len(text))
+			}
+		}
+
 		// Session ended
 		log.Debug("Hub: Reporting stopped (session end)")
 		as := state.AgentState{Phase: state.PhaseStopped}

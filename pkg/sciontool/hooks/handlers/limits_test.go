@@ -406,3 +406,61 @@ func readLimitsFile(t *testing.T, path string) LimitsState {
 	require.NoError(t, err)
 	return ls
 }
+
+func TestLimitsHandler_SkipsHeartbeatEvents(t *testing.T) {
+	tmpDir := t.TempDir()
+	limitsPath := filepath.Join(tmpDir, "agent-limits.json")
+
+	err := InitLimitsFile(limitsPath, 0, 10)
+	require.NoError(t, err)
+
+	h := &LimitsHandler{
+		maxTurns:      0,
+		maxModelCalls: 10,
+		limitsPath:    limitsPath,
+		statusHandler: &StatusHandler{StatusPath: filepath.Join(tmpDir, "agent-info.json")},
+	}
+
+	// Simulate 50 heartbeat model-end events — should NOT increment counter
+	for i := 0; i < 50; i++ {
+		err := h.Handle(&hooks.Event{
+			Name: hooks.EventModelEnd,
+			Data: hooks.EventData{
+				Raw: map[string]interface{}{"_scion_heartbeat": true},
+			},
+		})
+		require.NoError(t, err)
+	}
+
+	ls := readLimitsFile(t, limitsPath)
+	assert.Equal(t, 0, ls.ModelCallCount, "heartbeat events should not increment model call count")
+}
+
+func TestLimitsHandler_CountsNonHeartbeatModelEnd(t *testing.T) {
+	tmpDir := t.TempDir()
+	limitsPath := filepath.Join(tmpDir, "agent-limits.json")
+
+	err := InitLimitsFile(limitsPath, 0, 10)
+	require.NoError(t, err)
+
+	h := &LimitsHandler{
+		maxTurns:      0,
+		maxModelCalls: 10,
+		limitsPath:    limitsPath,
+		statusHandler: &StatusHandler{StatusPath: filepath.Join(tmpDir, "agent-info.json")},
+	}
+
+	// Simulate 3 real model-end events (no heartbeat flag)
+	for i := 0; i < 3; i++ {
+		err := h.Handle(&hooks.Event{
+			Name: hooks.EventModelEnd,
+			Data: hooks.EventData{
+				Raw: map[string]interface{}{},
+			},
+		})
+		require.NoError(t, err)
+	}
+
+	ls := readLimitsFile(t, limitsPath)
+	assert.Equal(t, 3, ls.ModelCallCount, "non-heartbeat model-end events should increment model call count")
+}
