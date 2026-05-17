@@ -109,8 +109,10 @@ Ports used: 8080 (general), 8091 (coding, MTP speculative decoding).
 ### Scion Server (Hub + Broker)
 
 ```bash
-nohup ./scripts/local-scion-server.sh > /tmp/scion-server.log 2>&1 &
+./scripts/local-scion-server.sh
 ```
+
+The script kills any existing server, starts a new one in the background, and waits for it to be ready before returning.
 
 ### Settings
 
@@ -137,10 +139,9 @@ profiles:
 
 ### Process
 
-1. **Start server in background** — `nohup ./scripts/local-scion-server.sh > /tmp/scion-server.log 2>&1 &`
-   - Logs to file so the command returns immediately
-   - Don't use `pkill -f "scion server"` — it kills your own background process
-   - Find PID with: `ps aux | grep "scion server" | grep -v grep | awk '{print $2}'`
+1. **Start server** — `./scripts/local-scion-server.sh`
+   - Blocks until server is ready, then returns. Server keeps running in background.
+   - To restart: run the script again — it kills the old server automatically.
 
 2. **Start agent** — `scion start test-agent "task" --harness opencode --harness-auth none`
    - `--harness-auth none` is required for opencode (not `--no-auth`)

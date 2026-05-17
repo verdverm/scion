@@ -581,13 +581,11 @@ func ResolveDockerNetworking(runtimeName string, env map[string]string) string {
 
 	// If endpoint uses the Docker bridge hostname (translated from localhost),
 	// rewrite back to localhost since host networking makes it reachable directly.
-	if strings.Contains(ep, "host.docker.internal") {
-		for _, key := range []string{"SCION_HUB_ENDPOINT", "SCION_HUB_URL"} {
-			if v, ok := env[key]; ok {
-				env[key] = strings.Replace(v, "host.docker.internal", "localhost", 1)
-			}
-		}
-		return "host"
+	// However, if the endpoint contains host.docker.internal or host.containers.internal,
+	// it was set by the bridge override and we should NOT use host networking - the
+	// container should use bridge networking to reach the host via the bridge hostname.
+	if strings.Contains(ep, "host.docker.internal") || strings.Contains(ep, "host.containers.internal") {
+		return ""
 	}
 
 	// If endpoint is localhost, containers need host networking to reach it.

@@ -25,6 +25,7 @@
 - **Harnesses**:
   - **Gemini**: Logic for interacting with Gemini CLI.
   - **Claude**: Logic for interacting with Claude Code.
+  - **Opencode**: Logic for interacting with opencode CLI.
   - **Generic**: A base harness for other LLM interfaces.
 - **Workspace Management**: Git Worktrees for concurrent, isolated code modification.
 
@@ -95,6 +96,12 @@ These terms may be used in shorthand with prompts
 Do not commit changes in the project's own `.scion` folder to git as part of committing progress on code and docs. These are managed and committed manually when template defaults are intentionally updated.
 
 Likewise, do not mess with any active agents while testing the tool, such as creating or deleting test agents, or other running agents inside this project.
+
+## Localhost Workflow
+
+Scion runs a full Hub + Broker + Web stack locally for agent development and testing. The `.design/scion-localhost-workflows.md` design doc covers the complete workflow — starting the server, configuring settings for container networking, lifecycle testing agents, and troubleshooting. Use it as a reference when working on agent lifecycle, Hub connectivity, or container runtime behavior.
+
+**Note:** In this mode, the harness (e.g., opencode, Claude) typically runs outside of scion, controlled by the human operator. This means you can act and test like the human operator and control the full system.
 
 ## Git Workflow Protocol: Sandbox & Worktree Environment
 
