@@ -356,6 +356,7 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 			TemplatePaths: resolveTemplatePaths,
 			ProfileName:   profileName,
 			Settings:      settings,
+			HarnessAuth:   opts.HarnessAuth,
 		})
 		if err != nil {
 			util.Debugf("harness.Resolve fell back to New(%q): %v", harnessName, err)

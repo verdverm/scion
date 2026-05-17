@@ -64,7 +64,7 @@ except ImportError:
 OPENCODE_AUTH_FILE = "~/.local/share/opencode/auth.json"
 OPENCODE_CONFIG_FILE = "~/.config/opencode/opencode.json"
 
-VALID_AUTH_TYPES = ("api-key", "auth-file")
+VALID_AUTH_TYPES = ("api-key", "auth-file", "none")
 
 # Exit codes mirror the contract documented in the design doc:
 #   0 = success
@@ -121,7 +121,9 @@ def _opencode_auth_file_present(file_paths: list[str]) -> bool:
     return os.path.isfile(_expand(OPENCODE_AUTH_FILE))
 
 
-def _select_auth_method(explicit: str, env_keys: set[str], file_paths: list[str]) -> tuple[str, str]:
+def _select_auth_method(
+    explicit: str, env_keys: set[str], file_paths: list[str]
+) -> tuple[str, str]:
     """Pick an auth method.
 
     Returns (method, env_key_or_empty). env_key is the chosen API key env var
@@ -153,6 +155,8 @@ def _select_auth_method(explicit: str, env_keys: set[str], file_paths: list[str]
                     f"found; expected {OPENCODE_AUTH_FILE}"
                 )
             return "auth-file", ""
+        if explicit == "none":
+            return "none", ""
 
     # Auto-detect precedence matches the compiled OpenCode harness.
     if has_anthropic:
@@ -193,7 +197,10 @@ def _translate_mcp_server(name: str, spec: dict[str, Any]) -> dict[str, Any] | N
     if transport == "stdio":
         cmd = spec.get("command")
         if not isinstance(cmd, str) or not cmd:
-            print(f"opencode provision: mcp server {name!r}: stdio transport missing command", file=sys.stderr)
+            print(
+                f"opencode provision: mcp server {name!r}: stdio transport missing command",
+                file=sys.stderr,
+            )
             return None
         args = spec.get("args") or []
         if not isinstance(args, list):
@@ -211,7 +218,10 @@ def _translate_mcp_server(name: str, spec: dict[str, Any]) -> dict[str, Any] | N
     if transport in ("sse", "streamable-http"):
         url = spec.get("url")
         if not isinstance(url, str) or not url:
-            print(f"opencode provision: mcp server {name!r}: {transport} transport missing url", file=sys.stderr)
+            print(
+                f"opencode provision: mcp server {name!r}: {transport} transport missing url",
+                file=sys.stderr,
+            )
             return None
         out = {
             "type": "remote",
@@ -222,7 +232,10 @@ def _translate_mcp_server(name: str, spec: dict[str, Any]) -> dict[str, Any] | N
             out["headers"] = {str(k): str(v) for k, v in headers.items()}
         return out
 
-    print(f"opencode provision: mcp server {name!r}: unsupported transport {transport!r}", file=sys.stderr)
+    print(
+        f"opencode provision: mcp server {name!r}: unsupported transport {transport!r}",
+        file=sys.stderr,
+    )
     return None
 
 
@@ -263,7 +276,10 @@ def _apply_mcp_servers(bundle: str) -> int:
         try:
             existing = _load_json(config_path)
         except (OSError, json.JSONDecodeError) as exc:
-            print(f"opencode provision: existing opencode.json not readable, recreating: {exc}", file=sys.stderr)
+            print(
+                f"opencode provision: existing opencode.json not readable, recreating: {exc}",
+                file=sys.stderr,
+            )
             existing = {}
         if isinstance(existing, dict):
             config_data = existing
@@ -278,10 +294,14 @@ def _apply_mcp_servers(bundle: str) -> int:
     try:
         _write_json(config_path, config_data)
     except OSError as exc:
-        print(f"opencode provision: failed to write opencode.json: {exc}", file=sys.stderr)
+        print(
+            f"opencode provision: failed to write opencode.json: {exc}", file=sys.stderr
+        )
         return 0
 
-    print(f"opencode provision: applied {len(translated)} mcp server(s)", file=sys.stderr)
+    print(
+        f"opencode provision: applied {len(translated)} mcp server(s)", file=sys.stderr
+    )
     return len(translated)
 
 
@@ -318,7 +338,10 @@ def _provision(manifest: dict[str, Any]) -> int:
         try:
             candidates = _load_json(auth_candidates_path) or {}
         except (OSError, json.JSONDecodeError) as exc:
-            print(f"opencode provision: invalid auth-candidates.json: {exc}", file=sys.stderr)
+            print(
+                f"opencode provision: invalid auth-candidates.json: {exc}",
+                file=sys.stderr,
+            )
             return EXIT_ERROR
 
     explicit = str(candidates.get("explicit_type") or "").strip()
@@ -333,7 +356,10 @@ def _provision(manifest: dict[str, Any]) -> int:
 
     outputs = manifest.get("outputs") or {}
     env_out = _expand(outputs.get("env") or os.path.join(bundle, "outputs", "env.json"))
-    auth_out = _expand(outputs.get("resolved_auth") or os.path.join(bundle, "outputs", "resolved-auth.json"))
+    auth_out = _expand(
+        outputs.get("resolved_auth")
+        or os.path.join(bundle, "outputs", "resolved-auth.json")
+    )
 
     resolved_payload: dict[str, Any] = {
         "schema_version": 1,
@@ -347,6 +373,8 @@ def _provision(manifest: dict[str, Any]) -> int:
         resolved_payload["env_var"] = env_key
     elif method == "auth-file":
         resolved_payload["auth_file"] = OPENCODE_AUTH_FILE
+    # method == "none" writes no additional fields — the agent runs without
+    # any auth credentials injected into the container.
 
     # OpenCode does not require additional env injection from the script. The
     # OpenCode CLI reads its own env precedence; the host already projected
@@ -384,7 +412,7 @@ def _inject_scion_plugin(bundle: str) -> None:
     OpenCode loads it on startup. The plugin is a no-op when SCION_AGENT_ID
     is not set, making it safe for non-Scion usage.
     """
-    plugin_src = os.path.join(bundle, "scion-plugin.js")
+    plugin_src = os.path.join(bundle, "home", ".config", "opencode", "scion-plugin.js")
     if not os.path.isfile(plugin_src):
         # Plugin not bundled — skip silently (non-Scion image or old bundle)
         return
@@ -402,6 +430,7 @@ def _inject_scion_plugin(bundle: str) -> None:
     plugin_dst = os.path.join(plugins_dir, "scion-plugin.js")
     try:
         import shutil
+
         shutil.copy2(plugin_src, plugin_dst)
         print(
             f"opencode provision: installed scion-plugin.js to {plugin_dst}",
@@ -439,10 +468,16 @@ def main() -> int:
     try:
         manifest = _load_json(manifest_path)
     except FileNotFoundError:
-        print(f"opencode provision: manifest not found at {manifest_path}", file=sys.stderr)
+        print(
+            f"opencode provision: manifest not found at {manifest_path}",
+            file=sys.stderr,
+        )
         return EXIT_ERROR
     except (OSError, json.JSONDecodeError) as exc:
-        print(f"opencode provision: failed to load manifest {manifest_path}: {exc}", file=sys.stderr)
+        print(
+            f"opencode provision: failed to load manifest {manifest_path}: {exc}",
+            file=sys.stderr,
+        )
         return EXIT_ERROR
 
     if not isinstance(manifest, dict):

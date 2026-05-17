@@ -38,6 +38,7 @@ type ResolveOptions struct {
 	TemplatePaths []string                  // optional template dirs (highest priority)
 	ProfileName   string                    // active profile (for settings overlay)
 	Settings      *config.VersionedSettings // optional settings overlay
+	HarnessAuth   string                    // optional --harness-auth CLI override
 }
 
 // ResolvedHarness is the result of harness.Resolve. The selected
@@ -77,6 +78,12 @@ func Resolve(_ context.Context, opts ResolveOptions) (*ResolvedHarness, error) {
 	if opts.Settings != nil {
 		settingsEntry, _ := opts.Settings.ResolveHarnessConfig(opts.ProfileName, opts.Name)
 		entry = mergeHarnessConfigEntries(entry, settingsEntry)
+	}
+
+	// --harness-auth CLI flag takes ultimate precedence over all other auth
+	// type sources (on-disk config, settings, profile overrides).
+	if opts.HarnessAuth != "" {
+		entry.AuthSelectedType = opts.HarnessAuth
 	}
 
 	if entry.Harness == "" {

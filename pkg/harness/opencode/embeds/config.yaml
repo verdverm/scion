@@ -58,6 +58,7 @@ capabilities:
     auth_file: { support: "yes" }
     oauth_token: { support: "no" }
     vertex_ai: { support: "yes" }
+    none: { support: "yes", reason: "No authentication required (e.g. local llama.cpp)" }
   mcp:
     stdio: { support: "yes" }
     sse: { support: "yes" }
@@ -74,6 +75,8 @@ auth:
         - name: OPENCODE_AUTH
           type: file
           target_suffix: "/.local/share/opencode/auth.json"
+    none:
+      required_env: []
   autodetect:
     env:
       ANTHROPIC_API_KEY: api-key

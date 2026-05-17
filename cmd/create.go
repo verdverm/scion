@@ -50,10 +50,10 @@ arguments are provided, an empty prompt.md is created for later editing.`,
 		// Validate --harness-auth value
 		if harnessAuthFlag != "" {
 			switch harnessAuthFlag {
-			case "api-key", "oauth-token", "auth-file", "vertex-ai":
+			case "api-key", "oauth-token", "auth-file", "vertex-ai", "none":
 				// valid
 			default:
-				return fmt.Errorf("invalid --harness-auth value %q: must be one of api-key, oauth-token, auth-file, vertex-ai", harnessAuthFlag)
+				return fmt.Errorf("invalid --harness-auth value %q: must be one of api-key, oauth-token, auth-file, vertex-ai, none", harnessAuthFlag)
 			}
 		}
 
@@ -282,7 +282,7 @@ func init() {
 	createCmd.Flags().StringVar(&harnessConfigFlag, "harness-config", "", "Named harness configuration to use")
 	createCmd.Flags().StringVar(&harnessConfigFlag, "harness", "h", "Named harness configuration to use (alias for --harness-config)")
 
-	createCmd.Flags().StringVar(&harnessAuthFlag, "harness-auth", "", "Override auth method for the harness (api-key, oauth-token, auth-file, vertex-ai)")
+	createCmd.Flags().StringVar(&harnessAuthFlag, "harness-auth", "", "Override auth method for the harness (api-key, oauth-token, auth-file, vertex-ai, none)")
 
 	// Template resolution flags for Hub mode (Section 9.4)
 	createCmd.Flags().BoolVar(&uploadTemplate, "upload-template", false, "Automatically upload local template to Hub if not found")

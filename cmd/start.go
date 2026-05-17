@@ -56,7 +56,7 @@ func init() {
 	startCmd.Flags().StringVar(&harnessConfigFlag, "harness-config", "", "Named harness configuration to use")
 	startCmd.Flags().StringVar(&harnessConfigFlag, "harness", "", "Named harness configuration to use (alias for --harness-config)")
 
-	startCmd.Flags().StringVar(&harnessAuthFlag, "harness-auth", "", "Override auth method for the harness (api-key, oauth-token, auth-file, vertex-ai)")
+	startCmd.Flags().StringVar(&harnessAuthFlag, "harness-auth", "", "Override auth method for the harness (api-key, oauth-token, auth-file, vertex-ai, none)")
 
 	// Notification flag — on by default for Hub mode; use --no-notify to opt out
 	startCmd.Flags().BoolVar(&startNoNotify, "no-notify", false, "Do not subscribe to notifications for the spawned agent")

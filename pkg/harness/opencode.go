@@ -148,9 +148,14 @@ func (o *OpenCode) ResolveAuth(auth api.AuthConfig) (*api.ResolvedAuth, error) {
 				return nil, fmt.Errorf("opencode: auth type %q selected but GOOGLE_CLOUD_PROJECT and/or GOOGLE_CLOUD_REGION not set", auth.SelectedType)
 			}
 			return o.resolveVertexAI(auth), nil
+		case "none":
+			return &api.ResolvedAuth{
+				Method:  "none",
+				EnvVars: map[string]string{},
+			}, nil
 
 		default:
-			return nil, fmt.Errorf("opencode: unknown auth type %q; valid types are: api-key, auth-file, vertex-ai", auth.SelectedType)
+			return nil, fmt.Errorf("opencode: unknown auth type %q; valid types are: api-key, auth-file, vertex-ai, none", auth.SelectedType)
 		}
 	}
 

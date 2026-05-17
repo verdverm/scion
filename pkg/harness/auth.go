@@ -227,6 +227,9 @@ func RequiredAuthSecrets(harnessName, authSelectedType string, gcpSAAssigned boo
 
 	switch harnessName {
 	case "claude", "gemini", "opencode", "codex":
+		if effectiveType == "none" {
+			return nil
+		}
 		if effectiveType == "vertex-ai" && !gcpSAAssigned {
 			return []api.RequiredSecret{
 				{
@@ -367,6 +370,8 @@ func RequiredAuthEnvKeys(harnessName, authSelectedType string) [][]string {
 		switch effectiveType {
 		case "api-key":
 			return [][]string{{"ANTHROPIC_API_KEY", "OPENAI_API_KEY"}}
+		case "none":
+			return nil
 		}
 	case "codex":
 		switch effectiveType {

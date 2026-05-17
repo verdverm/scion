@@ -269,8 +269,8 @@
         },
         "auth_selected_type": {
           "type": "string",
-          "enum": ["api-key", "oauth-token", "auth-file", "vertex-ai"],
-          "description": "Authentication mechanism to use (e.g., api-key, oauth-token, vertex-ai, auth-file)."
+          "enum": ["api-key", "oauth-token", "auth-file", "vertex-ai", "none"],
+          "description": "Authentication mechanism to use (e.g., api-key, oauth-token, vertex-ai, auth-file, none)."
         },
         "secrets": {
           "type": "array",
@@ -459,7 +459,8 @@
             "api_key": { "$ref": "#/$defs/capabilityField" },
             "auth_file": { "$ref": "#/$defs/capabilityField" },
             "oauth_token": { "$ref": "#/$defs/capabilityField" },
-            "vertex_ai": { "$ref": "#/$defs/capabilityField" }
+            "vertex_ai": { "$ref": "#/$defs/capabilityField" },
+            "none": { "$ref": "#/$defs/capabilityField" }
           },
           "additionalProperties": false
         },
@@ -481,7 +482,7 @@
       "properties": {
         "default_type": {
           "type": "string",
-          "enum": ["api-key", "oauth-token", "auth-file", "vertex-ai"]
+          "enum": ["api-key", "oauth-token", "auth-file", "vertex-ai", "none"]
         },
         "types": {
           "type": "object",
@@ -539,14 +540,14 @@
           "type": "object",
           "additionalProperties": {
             "type": "string",
-            "enum": ["api-key", "oauth-token", "auth-file", "vertex-ai"]
+            "enum": ["api-key", "oauth-token", "auth-file", "vertex-ai", "none"]
           }
         },
         "files": {
           "type": "object",
           "additionalProperties": {
             "type": "string",
-            "enum": ["api-key", "oauth-token", "auth-file", "vertex-ai"]
+            "enum": ["api-key", "oauth-token", "auth-file", "vertex-ai", "none"]
           }
         }
       },
@@ -610,7 +611,7 @@
         "resources": { "$ref": "#/$defs/resourceSpec" },
         "auth_selected_type": {
           "type": "string",
-          "enum": ["api-key", "oauth-token", "auth-file", "vertex-ai"]
+          "enum": ["api-key", "oauth-token", "auth-file", "vertex-ai", "none"]
         }
       },
       "additionalProperties": false
