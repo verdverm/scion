@@ -103,6 +103,20 @@ Scion runs a full Hub + Broker + Web stack locally for agent development and tes
 
 **Note:** In this mode, the harness (e.g., opencode, Claude) typically runs outside of scion, controlled by the human operator. This means you can act and test like the human operator and control the full system.
 
+## Agent Inspection: `scion look` Flags
+
+When inspecting agent terminal output with `scion look`, always use `--full --plain` flags:
+
+```bash
+scion look <agent> --full --plain
+```
+
+- **`--full`** captures the complete scrollback history, not just the current screen buffer. Without it, you miss earlier output that explains what happened before the current moment.
+- **`--plain`** strips ANSI escape sequences so output is readable and parseable. Without it, colored terminal codes make output garbled and hard to analyze.
+- **Do not use** `head` or `tail`, this defeats the purpose of getting the `--full` so you can see everything.
+
+These guidelines are **critical for diagnosing agent behavior**, especially when agents stall, produce unexpected output, or fail to send messages. Without these flags you get an incomplete understanding and end up making mistakes.
+
 ## Git Workflow Protocol: Sandbox & Worktree Environment
 
 You are operating in a restricted, non-interactive sandbox environment. Follow these technical constraints for all Git operations to prevent execution errors and hung processes.
