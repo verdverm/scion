@@ -194,7 +194,7 @@ func TestOpenCodeDialect_Parse_Heartbeat(t *testing.T) {
 	t.Run("model-start heartbeat", func(t *testing.T) {
 		event, err := d.Parse(map[string]interface{}{
 			"name": "model-start",
-			"data": map[string]interface{}{"_heartbeat": true},
+			"data": map[string]interface{}{"_scion_heartbeat": true},
 		})
 		require.NoError(t, err)
 		assert.Equal(t, hooks.EventModelStart, event.Name)
@@ -203,7 +203,7 @@ func TestOpenCodeDialect_Parse_Heartbeat(t *testing.T) {
 	t.Run("model-end heartbeat", func(t *testing.T) {
 		event, err := d.Parse(map[string]interface{}{
 			"name": "model-end",
-			"data": map[string]interface{}{"_heartbeat": true},
+			"data": map[string]interface{}{"_scion_heartbeat": true},
 		})
 		require.NoError(t, err)
 		assert.Equal(t, hooks.EventModelEnd, event.Name)

@@ -21,7 +21,7 @@
  *
  * Event mapping:
  *   session.created          → session-start      (activity: working)
- *   session.idle             → response-complete  (activity: completed)
+ *   session.idle             → (no event)          (activity: preserved)
  *   session.error            → session-end        (activity: stopped)
  *   session.deleted          → session-end        (activity: stopped)
  *   tool.execute.before      → tool-start         (activity: executing)
@@ -101,22 +101,30 @@ async function sendHook(client, name, data = {}, logTag = "") {
 
     // Write JSON to a temp file and pipe to sciontool — avoids shell quoting
     // issues with here-strings (<<<) that may not work in all environments.
-    const tmpPath = `/tmp/scion-hook-${Date.now()}-${Math.random().toString(36).slice(2)}.json`
     const fs = await import("fs")
+    const tmpPath = `/tmp/scion-hook-${Date.now()}-${Math.random().toString(36).slice(2)}.json`
     fs.writeFileSync(tmpPath, payload)
 
     // Fire-and-forget: don't await to avoid blocking the event handler.
     // Log errors to the app logger for visibility (not just console.log).
-    client.$`timeout ${HOOK_TIMEOUT_MS} sh -c 'cat $1 | sciontool hook --dialect=opencode 2>/dev/null; rm -f $1' _ ${tmpPath}`.catch(async (err) => {
-      await client.app.log({
-        body: {
-          service: "scion-plugin",
-          level: "error",
-          message: `scion hook failed: ${name}`,
-          extra: { error: String(err)?.message || String(err), name },
-        },
-      })
-    })
+    const { execFile } = await import("child_process")
+    execFile(
+      "timeout",
+      [String(HOOK_TIMEOUT_MS), "sh", "-c", `cat $1 | sciontool hook --dialect=opencode 2>/dev/null; rm -f $1`, "_", tmpPath],
+      { timeout: HOOK_TIMEOUT_MS + 1000, stdio: "ignore" },
+      (err) => {
+        if (err) {
+          client.app.log({
+            body: {
+              service: "scion-plugin",
+              level: "error",
+              message: `scion hook failed: ${name}`,
+              extra: { error: String(err)?.message || String(err), name },
+            },
+          }).catch(() => {})
+        }
+      },
+    )
   } catch (err) {
     await client.app.log({
       body: {
@@ -261,8 +269,8 @@ export const ScionStatusPlugin = async ({ project, client, $, directory, worktre
     },
 
     "session.idle": async () => {
-      // Session is idle — task may be completed
-      await sendHook(client, "response-complete", { source: "opencode" })
+      // No event — let the agent stay in its last activity state.
+      // Matches Claude behavior: no per-turn completion event.
     },
 
     "session.error": async ({ error }) => {

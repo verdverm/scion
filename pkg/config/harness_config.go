@@ -72,6 +72,13 @@ func LoadHarnessConfigDir(dirPath string) (*HarnessConfigDir, error) {
 		return nil, fmt.Errorf("failed to parse config.yaml: %w", err)
 	}
 
+	// Populate AuthSelectedType from Auth.DefaultType if not already set.
+	// This ensures the harness config's default auth type is used when
+	// resolving auth for container-script harnesses.
+	if entry.Auth != nil && entry.Auth.DefaultType != "" && entry.AuthSelectedType == "" {
+		entry.AuthSelectedType = entry.Auth.DefaultType
+	}
+
 	return &HarnessConfigDir{
 		Name:   filepath.Base(absPath),
 		Path:   absPath,

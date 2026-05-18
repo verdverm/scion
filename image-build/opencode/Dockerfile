@@ -19,6 +19,10 @@ FROM ${BASE_IMAGE}
 RUN mkdir -p /home/scion/.local/share/opencode && \
   chown -R scion:scion /home/scion/.local
 
+# Install harness provision script
+RUN mkdir -p /home/scion/.scion/harness && \
+  chown -R scion:scion /home/scion/.scion
+
 # Install OpenCode
 # RUN curl -fsSL https://opencode.ai/install | bash
 RUN npm install -g opencode-ai \

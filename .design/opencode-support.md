@@ -56,8 +56,8 @@ The `scion-plugin.js` bridges OpenCode events to `sciontool hook --dialect=openc
 ### Gap 3: No Heartbeat Mechanism — RESOLVED
 The plugin fires `model-start` + `model-end` pairs every 45 seconds (suppressed during sticky states). This keeps `last_activity_event` fresh well under the 5-minute stalled threshold.
 
-### Gap 4: No Limits Tracking — PARTIALLY RESOLVED
-The dialect and event pipeline support limits. The plugin now marks heartbeat `model-start`/`model-end` events with `_scion_heartbeat: true`, and the `LimitsHandler` skips these to prevent heartbeat noise from consuming `max_model_calls` quota. However, OpenCode never emits `agent-end`, so **turn counting does not work for OpenCode agents**. Model-call counting works for real model-ends but not for the heartbeat variants. See Known Gaps below.
+### Gap 4: No Limits Tracking — TURN COUNTING STILL BROKEN
+The dialect and event pipeline support limits. The plugin marks heartbeat `model-start`/`model-end` events with `_scion_heartbeat: true`, and the `LimitsHandler` skips these to prevent heartbeat noise from consuming `max_model_calls` quota. **`max_model_calls` works for real model-ends.** However, OpenCode never emits `agent-end` — it sends `session-end` instead — so **`max_turns` limits are ineffective for OpenCode agents**. See Known Gaps below.
 
 ### Gap 5: No Assistant Text Forwarding — RESOLVED
 The plugin now collects assistant text from `message.updated` (assistant) events and includes it in `session-end` events. The `HubHandler` forwards `assistant_text` from `session-end` via `SendOutboundMessage`, the same path as `agent-end` for Claude. **Assistant responses now appear in the Messages tab.**
@@ -83,7 +83,7 @@ The plugin now collects assistant text from `message.updated` (assistant) events
 
 ### Known Gaps
 
-1. **Turn counting doesn't work (Gap 4 partial)** — The `LimitsHandler` only increments on `agent-end` (turns) and `model-end` (model calls). The OpenCode plugin never emits `agent-end`; it sends `session-end` instead. **`max_turns` limits are ineffective for OpenCode agents.** `max_model_calls` works for real model-ends but not for heartbeat model-ends (which are now properly skipped via the `_scion_heartbeat` flag).
+1. **Turn counting doesn't work (Gap 4)** — The `LimitsHandler` only increments on `agent-end` (turns) and `model-end` (model calls). The OpenCode plugin never emits `agent-end`; it sends `session-end` instead. **`max_turns` limits are ineffective for OpenCode agents.** `max_model_calls` works correctly for real model-ends; heartbeat model-ends are properly skipped via the `_scion_heartbeat` flag.
 
 2. **No Hub API direct fallback (Phase 5 never implemented)** — The original design proposed dual-path: shell to `sciontool hook` + direct Hub API calls as fallback. Only the `sciontool hook` path exists. If `sciontool` is unavailable in the container, the plugin logs errors to the OpenCode app logger but events are lost.
 
@@ -103,7 +103,7 @@ The plugin now collects assistant text from `message.updated` (assistant) events
 | Message events (thinking) | Yes | message.updated (assistant) → model-start |
 | User prompt tracking | Yes | message.updated (user) → prompt-submit |
 | Turn counting (max_turns) | **No** | LimitsHandler needs agent-end, plugin sends session-end |
-| Model call counting (max_model_calls) | **Partial** | Heartbeat model-ends are skipped via `_scion_heartbeat` flag; real model-ends count |
+| Model call counting (max_model_calls) | **Yes** | Real model-ends count; heartbeat model-ends are skipped via `_scion_heartbeat` flag |
 | Assistant text → Messages tab | **Yes** | Plugin collects assistant text from `message.updated`, HubHandler forwards from `session-end` |
 | Session completion reporting | Yes | session.idle → response-complete → completed |
 | Session error reporting | Yes | session.error → session-end → stopped |
@@ -115,19 +115,21 @@ The plugin now collects assistant text from `message.updated` (assistant) events
 
 ### Gap 4: Limits Tracking — Turn counting still needs `agent-end` or `session-end` handling
 
-The `LimitsHandler` in `pkg/sciontool/hooks/handlers/limits.go` only processes `agent-end` (turns) and `model-end` (model calls). Heartbeat model-ends are now skipped via the `_scion_heartbeat` flag, so real model-call counting works for OpenCode. Turn counting remains broken since OpenCode never emits `agent-end`.
+**PRIORITY: High** — This is the most impactful remaining gap. Without it, `max_turns` limits have no effect on OpenCode agents.
+
+The `LimitsHandler` in `pkg/sciontool/hooks/handlers/limits.go` only processes `agent-end` (turns) and `model-end` (model calls). Heartbeat model-ends are skipped via the `_scion_heartbeat` flag, so real model-call counting works for OpenCode. Turn counting remains broken since OpenCode never emits `agent-end`.
 
 **Option A:** Extend LimitsHandler to also process `session-end` as a turn completion event. This would count each OpenCode session as one turn.
 
-**Option B:** Have the plugin infer model calls from message events (e.g., each assistant message chunk → model-end). This is fragile since OpenCode's message events don't carry LLM call boundaries.
+**Option B:** Have the plugin emit `agent-end` on `session.deleted` with collected assistant text. This provides full parity with Claude/Gemini dialects and fixes turn counting without modifying LimitsHandler.
 
-**Option C:** Add a `model-end` event to the plugin that fires when the assistant finishes responding. This requires correlating `message.updated` events to infer LLM call boundaries.
+**Option C:** Add a `model-end` event to the plugin that fires when the assistant finishes responding. This requires correlating `message.updated` events to infer LLM call boundaries. Fragile since OpenCode's message events don't carry LLM call boundaries.
 
 ### Gap 5: Assistant Text Forwarding — RESOLVED
 
 Implemented via Option B: the plugin collects assistant text from `message.updated` (assistant) events into an `assistantTextParts` buffer, and includes it in `session-end` events. The `HubHandler` forwards `assistant_text` from `session-end` via `SendOutboundMessage`.
 
-**Remaining:** Turn counting remains broken (see Gap 4 above).
+**Remaining:** Turn counting is still broken (see Gap 4 above — highest priority item).
 
 ## Implementation Details
 
@@ -209,38 +211,67 @@ OpenCode auto-discovers `.js` files in `~/.config/opencode/plugins/`. Verified i
 
 The plugin uses `sciontool hook` which handles auth internally. No direct Hub API calls are made, so token management is delegated to `sciontool`. If `sciontool` is unavailable, there is no fallback.
 
+## Recent Fixes
+
+### Bug: Dialect test used wrong heartbeat flag name
+`opencode_test.go` used `_heartbeat` instead of `_scion_heartbeat`. The limits handler checks `_scion_heartbeat`, so the test was testing the wrong flag. Fixed to use `_scion_heartbeat` to match the plugin and limits handler.
+
+## Next Steps
+
+### P0: Fix Turn Counting (Gap 4)
+**Impact:** `max_turns` limits have zero effect on OpenCode agents. An agent can run indefinitely without hitting its turn limit.
+**Effort:** Medium (50-100 lines in either plugin or LimitsHandler).
+**See details below.**
+
+### P1: Improve Dialect Test Coverage
+**Impact:** Low risk, defensive quality. Two code paths in the dialect parser have no test coverage.
+**Effort:** Small (~20 lines).
+**See details below.**
+
+### P2: Document `container_hub_endpoint` for macOS
+**Impact:** Medium — causes repeated heartbeat errors for macOS developers.
+**Effort:** Trivial (1-2 paragraph addition to localhost workflows doc).
+
+---
+
 ## Open Questions
 
+### P0: Fix Turn Counting (Gap 4)
+
 1. **Should LimitsHandler also process `session-end`?**
-   - Treating `session-end` as a turn completion would enable `max_turns` for OpenCode
-   - Model call counting now works for non-heartbeat events (heartbeat events are skipped via `_scion_heartbeat`)
-   - **Recommendation:** Add `session-end` → turn increment in LimitsHandler
+    - Treating `session-end` as a turn completion would enable `max_turns` for OpenCode
+    - Model call counting now works correctly (heartbeat events are skipped via `_scion_heartbeat`)
+    - **Recommendation:** Option A — Add `session-end` → turn increment in LimitsHandler
 
-2. **Should we add `agent-end` to the plugin?**
-   - Would fix turn counting (the remaining Gap 4 issue)
-   - Assistant text forwarding is now handled via `session-end` with collected assistant text (Gap 5 resolved)
-   - **Recommendation:** Add `agent-end` on `session.deleted` with collected assistant text for turn counting parity
+2. **Should we add `agent-end` to the plugin instead?**
+    - Would fix turn counting (the remaining Gap 4 issue) via Option B above
+    - Assistant text forwarding is now handled via `session-end` with collected assistant text (Gap 5 resolved)
+    - **Recommendation:** Option B — Add `agent-end` on `session.deleted` with collected assistant text for turn counting parity
 
-3. **Should we add a native hook emission mode to OpenCode?**
-   - Adding `--scion-hooks` flag to OpenCode that pipes events to stdout in `sciontool hook` JSON format
-   - Would eliminate the plugin and `$` shelling overhead
-   - Requires changes to OpenCode core (may not be feasible if OpenCode is a dependency, not a fork)
-   - **Recommendation:** Defer; the plugin approach works for now
+### P1: Improve Test Coverage
 
-4. **Should we implement Hub API direct fallback (Phase 5)?**
-   - Currently the plugin is a single path: if `sciontool` is unavailable, events are lost
-   - Plugin errors are now logged to the OpenCode app logger for visibility
-   - Direct Hub API calls would provide resilience
-   - **Recommendation:** Low priority; `sciontool` is guaranteed in Scion containers
+3. **Should we add `_activity` control event test to dialect tests?**
+    - `opencode_test.go` has no test for the `_activity` control event or the `"hook_event_name"` fallback path
+    - **Recommendation:** Add tests in `opencode_test.go`
 
-5. **Should we add a test for plugin seeding?**
-   - `TestOpenCodeEmbedsSeedRootSupportFiles` didn't verify `scion-plugin.js` lands in the harness-config tree
-   - **Status:** RESOLVED — assertion added to existing test
+### P2: Documentation & Resilience
 
-6. **Should we document the `container_hub_endpoint` setting for macOS?**
-   - `server.broker.container_hub_endpoint` in `~/.scion/settings.yaml` defaults to `http://172.17.0.1:9810` (Linux bridge)
-   - macOS needs `http://host.docker.internal:9810`
-   - **Recommendation:** Add to localhost workflows doc
+4. **Should we document the `container_hub_endpoint` setting for macOS?**
+    - `server.broker.container_hub_endpoint` in `~/.scion/settings.yaml` defaults to `http://172.17.0.1:9810` (Linux bridge)
+    - macOS needs `http://host.docker.internal:9810`
+    - **Recommendation:** Add to localhost workflows doc
+
+5. **Should we implement Hub API direct fallback (Phase 5)?**
+    - Currently the plugin is a single path: if `sciontool` is unavailable, events are lost
+    - Plugin errors are now logged to the OpenCode app logger for visibility
+    - Direct Hub API calls would provide resilience
+    - **Recommendation:** Low priority; `sciontool` is guaranteed in Scion containers
+
+6. **Should we add a native hook emission mode to OpenCode?**
+    - Adding `--scion-hooks` flag to OpenCode that pipes events to stdout in `sciontool hook` JSON format
+    - Would eliminate the plugin and `$` shelling overhead
+    - Requires changes to OpenCode core (may not be feasible if OpenCode is a dependency, not a fork)
+    - **Recommendation:** Defer; the plugin approach works for now
 
 ## Appendix: Reference — Claude Dialect Normalization
 
