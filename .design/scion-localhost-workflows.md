@@ -257,10 +257,17 @@ Test that scion can orchestrate multiple agents that communicate via `scion mess
 
 Run these tests sequentially, trying different approaches for how the task reaches the child agent. For each approach, record results below.
 
+### Critical Test Integrity Rules
+
+- **NEVER send messages to agents directly during tests.** The entire purpose of these tests is to verify that the orchestrator agent can communicate with child agents via `scion message`. If you manually send messages to agents, you invalidate the test — you are not testing the messaging system, you are bypassing it. If an agent fails to send a message (e.g., because `scion` CLI is unavailable inside the container), that is a test failure to record, not a problem to work around by sending the message yourself.
+- **NEVER create files inside agent containers.** If an agent fails to create its output file, that is a test result to record.
+- **NEVER modify agent state directly.** All agent communication must go through the Hub API's message system.
+
 ### Known Issues to Work Around
 
 - **Messaging race condition**: If an agent starts another agent and immediately sends it a message, the message may be lost because the target agent isn't ready yet. Always wait for the target agent to reach `running` phase before sending messages.
 - **Orchestrator shortcutting**: The orchestrator agent tends to skip waiting steps and proceed to output steps before receiving messages. Always set `blocked` status after sending the child agent's task — the harness will auto-notify when a message arrives. Do NOT have the orchestrator poll for messages.
+- **Blocked state must end the turn immediately**: When an agent sets its status to `blocked`, it must **immediately end its turn and do no further work**. Agents tend to interpret "wait" as "watch yourself" — continuing to execute steps after setting blocked. The `blocked` status is the agent's signal that it is now idle, waiting for a message to arrive via harness notification. Setting blocked and then continuing to work defeats the purpose: the agent may produce output before the message arrives, or miss the notification entirely. Instruction pattern: after the `sciontool status blocked` command, the agent's **only** next action should be to wait for the harness notification.
 
 ### Cleanup
 
@@ -304,11 +311,17 @@ You are the orchestrator. Coordinate with a code-reviewer agent to analyze three
    (2) Whether each edge case is handled correctly and if any are missing
    (3) One actionable improvement suggestion per function
 
-   After completing your analysis, send your report back to me via:
-   scion message orchestrator "YOUR COMPLETE REPORT HERE WITH ALL THREE SECTIONS"
+  After completing your analysis, you MUST send your report back to me using the scion CLI. Run this exact command:
+     scion message orchestrator "YOUR COMPLETE REPORT HERE WITH ALL THREE SECTIONS"
+     - This is mandatory. Do not just print your report in your response. You must execute the `scion message` command to deliver it through the Hub.
+     - The command sends the message to the orchestrator agent by name. Use the exact format above with your full report as the message body.
+   After sending the report, mark your task as complete:
+     sciontool status task_completed "Multi-agent code review complete"
+   - **CRITICAL: Immediately end your turn after setting complete. Do NOT execute any further steps, do NOT continue working.** Setting complete is your signal that you are done.
 
-3. Set blocked status: `sciontool status blocked "Waiting for code-reviewer analysis"`
-4. Wait for code-reviewer's message (harness will notify you)
+ 3. Set blocked status: `sciontool status blocked "Waiting for code-reviewer analysis"`
+   - **CRITICAL: Immediately end your turn after setting blocked. Do NOT execute any further steps, do NOT poll for messages, do NOT continue working.** The blocked status is your signal that you are idle and waiting for a harness notification. Any work you do after setting blocked is wasted — you will not see the notification until your next turn.
+4. When a message arrives, the harness will notify you and resume your turn.
 5. Once you receive the report, create `/workspace/review-summary.md` containing:
    - A header section
    - code-reviewer's full report (copy their findings)
@@ -366,11 +379,17 @@ You are the orchestrator. Coordinate with a code-reviewer agent to analyze three
    (2) Whether each edge case is handled correctly and if any are missing
    (3) One actionable improvement suggestion per function
 
-   After completing your analysis, send your report back to me via:
-   scion message orchestrator \"YOUR COMPLETE REPORT HERE WITH ALL THREE SECTIONS\""`
+  After completing your analysis, you MUST send your report back to me using the scion CLI. Run this exact command:
+     scion message orchestrator \"YOUR COMPLETE REPORT HERE WITH ALL THREE SECTIONS\"
+     - This is mandatory. Do not just print your report in your response. You must execute the `scion message` command to deliver it through the Hub.
+     - The command sends the message to the orchestrator agent by name. Use the exact format above with your full report as the message body.
+   After sending the report, mark your task as complete:
+     sciontool status task_completed "Multi-agent code review complete\""
+   - **CRITICAL: Immediately end your turn after setting complete. Do NOT execute any further steps, do NOT continue working.** Setting complete is your signal that you are done.
 
 2. Set blocked status: `sciontool status blocked "Waiting for code-reviewer analysis"`
-3. Wait for code-reviewer's message (harness will notify you)
+   - **CRITICAL: Immediately end your turn after setting blocked. Do NOT execute any further steps, do NOT poll for messages, do NOT continue working.** The blocked status is your signal that you are idle and waiting for a harness notification. Any work you do after setting blocked is wasted — you will not see the notification until your next turn.
+3. When a message arrives, the harness will notify you and resume your turn.
 4. Once you receive the report, create `/workspace/review-summary.md` containing:
    - A header section
    - code-reviewer's full report (copy their findings)
