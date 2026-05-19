@@ -45,6 +45,8 @@ func (h *HubHandler) Handle(event *hooks.Event) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
+	log.Debug("Hub: event received: name=%s dialect=%s", event.Name, event.Dialect)
+
 	var err error
 	switch event.Name {
 	case hooks.EventSessionStart:
@@ -68,6 +70,8 @@ func (h *HubHandler) Handle(event *hooks.Event) error {
 
 	case hooks.EventModelStart:
 		// Model start - report thinking, but respect sticky activity
+		localAct := readLocalActivity()
+		log.Debug("Hub: model-start: localActivity=%q", localAct)
 		if h.isLocalActivitySticky() {
 			log.Debug("Hub: Skipping thinking (local activity is sticky)")
 			return nil
@@ -129,6 +133,8 @@ func (h *HubHandler) Handle(event *hooks.Event) error {
 		// store as an outbound agent→user reply. This is what makes
 		// assistant responses show up in the Messages tab. Best-effort:
 		// failure here must not break the status update flow below.
+		localAct2 := readLocalActivity()
+		log.Debug("Hub: tool-end/agent-end/model-end: localActivity=%q", localAct2)
 		if event.Name == hooks.EventAgentEnd && event.Data.AssistantText != "" {
 			text := event.Data.AssistantText
 			// Guard against very large assistant responses (e.g. full file
@@ -231,7 +237,7 @@ func (h *HubHandler) Handle(event *hooks.Event) error {
 		log.Error("Hub status update failed: %v", err)
 		// Don't return error - we don't want Hub failures to break the hook chain
 	} else {
-		log.Debug("Hub status update sent successfully")
+		log.Debug("Hub: status update sent successfully for event=%s", event.Name)
 	}
 
 	return nil

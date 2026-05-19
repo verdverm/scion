@@ -2775,6 +2775,8 @@ func (s *Server) updateAgentStatus(w http.ResponseWriter, r *http.Request, id st
 		return
 	}
 
+	s.agentLifecycleLog.Debug("agent status update: agent_id=%s phase=%q activity=%q message=%q", id, status.Phase, status.Activity, status.Message)
+
 	if err := s.store.UpdateAgentStatus(ctx, id, status); err != nil {
 		writeErrorFromErr(w, err, "")
 		return
@@ -2782,6 +2784,7 @@ func (s *Server) updateAgentStatus(w http.ResponseWriter, r *http.Request, id st
 
 	// Publish status event (best-effort: fetch agent for ProjectID)
 	if agent, err := s.store.GetAgent(ctx, id); err == nil {
+		s.agentLifecycleLog.Debug("agent status published: agent_id=%s phase=%q activity=%q", agent.ID, agent.Phase, agent.Activity)
 		s.events.PublishAgentStatus(ctx, agent)
 	} else {
 		s.agentLifecycleLog.Warn("Failed to fetch agent for status event", "agent_id", id, "error", err)

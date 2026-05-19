@@ -194,10 +194,13 @@ async function startHeartbeat(client) {
       return
     }
 
-    // Send a lightweight model-start → model-end pair to keep activity alive
-    // This maps to thinking → working, which is harmless and keeps last_activity_event fresh
-    await sendHook(client, "model-start", { _scion_heartbeat: true })
-    await sendHook(client, "model-end", { _scion_heartbeat: true })
+    // Send a single tool-end event to keep activity alive without the
+    // thinking→working flash that model-start/model-end pairs create.
+    await sendHook(client, "tool-end", {
+      tool_name: "heartbeat",
+      source: "opencode",
+      _scion_heartbeat: true,
+    })
   }
 
   timer = setInterval(tick, HEARTBEAT_INTERVAL_MS)
@@ -269,8 +272,9 @@ export const ScionStatusPlugin = async ({ project, client, $, directory, worktre
     },
 
     "session.idle": async () => {
-      // No event — let the agent stay in its last activity state.
-      // Matches Claude behavior: no per-turn completion event.
+      // Fire agent-end to create an explicit turn boundary, matching
+      // Claude's Stop → agent-end → working pattern.
+      await sendHook(client, "agent-end", { source: "opencode" })
     },
 
     "session.error": async ({ error }) => {
@@ -327,8 +331,9 @@ export const ScionStatusPlugin = async ({ project, client, $, directory, worktre
         // Reset assistant text buffer on new user prompt
         assistantTextParts = []
       } else if (role === "assistant") {
-        // Assistant message → model-start (thinking)
-        // This fires when the assistant starts responding
+        // Assistant message → agent-start (thinking) to mark turn boundary,
+        // then model-start for the actual model response start
+        debouncedMsgHook(client, "agent-start", { source: "opencode" })
         debouncedMsgHook(client, "model-start", {
           prompt: truncate(contentStr, 100),
           source: "opencode",
