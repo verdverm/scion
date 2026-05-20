@@ -243,6 +243,11 @@ type VersionedSettings struct {
 	DefaultMaxModelCalls int               `json:"default_max_model_calls,omitempty" yaml:"default_max_model_calls,omitempty" koanf:"default_max_model_calls"`
 	DefaultMaxDuration   string            `json:"default_max_duration,omitempty" yaml:"default_max_duration,omitempty" koanf:"default_max_duration"`
 	DefaultResources     *api.ResourceSpec `json:"default_resources,omitempty" yaml:"default_resources,omitempty" koanf:"default_resources"`
+
+	// DisableLocalAuth when true prevents auth gathering from scanning
+	// host environment variables and well-known credential files. The
+	// harness must rely solely on harness-config env vars and hub secrets.
+	DisableLocalAuth *bool `json:"disable_local_auth,omitempty" yaml:"disable_local_auth,omitempty" koanf:"disable_local_auth"`
 }
 
 // V1ServerConfig holds server-side configuration in the versioned settings format.
@@ -1474,9 +1479,10 @@ func convertVersionedToLegacy(vs *VersionedSettings) *Settings {
 	}
 
 	s := &Settings{
-		ActiveProfile:   vs.ActiveProfile,
-		DefaultTemplate: vs.DefaultTemplate,
-		WorkspacePath:   vs.WorkspacePath,
+		ActiveProfile:    vs.ActiveProfile,
+		DefaultTemplate:  vs.DefaultTemplate,
+		WorkspacePath:    vs.WorkspacePath,
+		DisableLocalAuth: vs.DisableLocalAuth,
 	}
 
 	// Convert Hub

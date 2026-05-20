@@ -181,6 +181,12 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 		projectID = settings.Hub.ProjectID
 	}
 
+	// Phase 6: Inherit DisableLocalAuth from settings so auth gathering
+	// skips host env vars and credential file scanning.
+	if settings != nil && settings.DisableLocalAuth != nil && *settings.DisableLocalAuth {
+		opts.DisableLocalAuth = true
+	}
+
 	harnessName := ""
 	if finalScionCfg != nil {
 		harnessName = finalScionCfg.Harness
@@ -421,7 +427,13 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 	var auth api.AuthConfig
 	var resolvedAuth *api.ResolvedAuth
 	if !opts.NoAuth {
-		auth = harness.GatherAuthWithEnv(authEnvOverlay, !opts.BrokerMode)
+		// localSources controls whether host env vars and credential files
+		// are scanned. In broker mode it is always false. When
+		// DisableLocalAuth is set in settings it is also false, forcing the
+		// harness to rely only on settings env vars and hub secrets (never
+		// on the host's real API keys or well-known credential files).
+		localSources := !opts.BrokerMode && !opts.DisableLocalAuth
+		auth = harness.GatherAuthWithEnv(authEnvOverlay, localSources)
 		if opts.BrokerMode {
 			harness.OverlayFileSecrets(&auth, opts.ResolvedSecrets)
 		}

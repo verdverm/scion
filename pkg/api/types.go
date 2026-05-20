@@ -763,6 +763,7 @@ type StartOptions struct {
 	Env               map[string]string
 	ResolvedSecrets   []ResolvedSecret
 	BrokerMode        bool // When true, auth gathering skips local sources (broker env + filesystem)
+	DisableLocalAuth  bool // When true, auth gathering skips host env vars and credential file scanning (only uses settings/hub secrets)
 	Detached          *bool
 	Resume            bool
 	NoAuth            bool
