@@ -79,7 +79,7 @@ func TestDeleteAgentFiles_CleansStaleWorktree(t *testing.T) {
 	os.MkdirAll(agentDir, 0755)
 
 	// Create a worktree at the workspace path (simulates a successful start)
-	if err := util.CreateWorktree(agentWorkspace, agentName); err != nil {
+	if err := util.CreateWorktree(agentWorkspace, agentName, ""); err != nil {
 		t.Fatalf("CreateWorktree failed: %v", err)
 	}
 
@@ -208,7 +208,7 @@ func TestDeleteAgentFiles_CleansWorktreeWithGitFile(t *testing.T) {
 	os.MkdirAll(agentDir, 0755)
 
 	// Create a proper worktree (has .git file)
-	if err := util.CreateWorktree(agentWorkspace, agentName); err != nil {
+	if err := util.CreateWorktree(agentWorkspace, agentName, ""); err != nil {
 		t.Fatalf("CreateWorktree failed: %v", err)
 	}
 

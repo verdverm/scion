@@ -240,7 +240,7 @@ func (m *AgentManager) Provision(ctx context.Context, opts api.StartOptions) (*a
 		}
 		inlineCfg.AuthSelectedType = opts.HarnessAuth
 	}
-	agentDir, _, _, cfg, err := GetAgent(ctx, opts.Name, opts.Template, opts.Image, opts.HarnessConfig, opts.ProjectPath, opts.Profile, "created", opts.Branch, opts.Workspace, inlineCfg)
+	agentDir, _, _, cfg, err := GetAgent(ctx, opts.Name, opts.Template, opts.Image, opts.HarnessConfig, opts.ProjectPath, opts.Profile, "created", opts.Branch, opts.Source, opts.Workspace, inlineCfg)
 	if err == nil {
 		_ = UpdateAgentConfig(opts.Name, opts.ProjectPath, "created", m.Runtime.Name(), opts.Profile)
 	}
@@ -270,7 +270,7 @@ func (m *AgentManager) Provision(ctx context.Context, opts api.StartOptions) (*a
 	return cfg, nil
 }
 
-func ProvisionAgent(ctx context.Context, agentName string, templateName string, agentImage string, harnessConfig string, projectPath string, profileName string, optionalStatus string, branch string, workspace string, inlineConfig ...*api.ScionConfig) (string, string, *api.ScionConfig, error) {
+func ProvisionAgent(ctx context.Context, agentName string, templateName string, agentImage string, harnessConfig string, projectPath string, profileName string, optionalStatus string, branch string, source string, workspace string, inlineConfig ...*api.ScionConfig) (string, string, *api.ScionConfig, error) {
 	// 1. Prepare agent directories
 	projectDir, err := config.GetResolvedProjectDir(projectPath)
 	if err != nil {
@@ -450,8 +450,12 @@ func ProvisionAgent(ctx context.Context, agentName string, templateName string, 
 			// Use slugified agent name for valid git branch names
 			worktreeBranch = api.Slugify(agentName)
 		}
+		sourceBranch := source
+		if sourceBranch == "" {
+			sourceBranch = util.DefaultBranch(projectDir)
+		}
 
-		if err := util.CreateWorktree(agentWorkspace, worktreeBranch); err != nil {
+		if err := util.CreateWorktree(agentWorkspace, worktreeBranch, sourceBranch); err != nil {
 			return "", "", nil, fmt.Errorf("failed to create git worktree: %w", err)
 		}
 
@@ -1069,7 +1073,7 @@ func UpdateAgentDeletedAt(agentName string, projectPath string, deletedAt time.T
 	return os.WriteFile(agentInfoPath, newData, 0644)
 }
 
-func GetAgent(ctx context.Context, agentName string, templateName string, agentImage string, harnessConfig string, projectPath string, profileName string, optionalStatus string, branch string, workspace string, inlineConfig ...*api.ScionConfig) (string, string, string, *api.ScionConfig, error) {
+func GetAgent(ctx context.Context, agentName string, templateName string, agentImage string, harnessConfig string, projectPath string, profileName string, optionalStatus string, branch string, source string, workspace string, inlineConfig ...*api.ScionConfig) (string, string, string, *api.ScionConfig, error) {
 	projectDir, err := config.GetResolvedProjectDir(projectPath)
 	if err != nil {
 		return "", "", "", nil, err
@@ -1114,10 +1118,14 @@ func GetAgent(ctx context.Context, agentName string, templateName string, agentI
 				if targetBranch == "" {
 					targetBranch = api.Slugify(agentName)
 				}
+				sourceBranch := source
+				if sourceBranch == "" {
+					sourceBranch = util.DefaultBranch(projectDir)
+				}
 				if root, rootErr := util.RepoRootDir(filepath.Dir(agentWorkspace)); rootErr == nil {
 					_ = util.PruneWorktreesIn(root)
 				}
-				if err := util.CreateWorktree(agentWorkspace, targetBranch); err != nil {
+				if err := util.CreateWorktree(agentWorkspace, targetBranch, sourceBranch); err != nil {
 					util.Debugf("GetAgent: failed to recreate worktree at %s: %v, clearing workspace", agentWorkspace, err)
 					agentWorkspace = ""
 				} else {
@@ -1149,7 +1157,7 @@ func GetAgent(ctx context.Context, agentName string, templateName string, agentI
 		if len(inlineConfig) > 0 {
 			ic = inlineConfig[0]
 		}
-		home, ws, cfg, err := ProvisionAgent(ctx, agentName, templateName, agentImage, harnessConfig, projectPath, profileName, optionalStatus, branch, workspace, ic)
+		home, ws, cfg, err := ProvisionAgent(ctx, agentName, templateName, agentImage, harnessConfig, projectPath, profileName, optionalStatus, branch, source, workspace, ic)
 		if err != nil {
 			util.Debugf("GetAgent: ProvisionAgent failed: %v", err)
 		} else {

@@ -1427,7 +1427,7 @@ func TestGetAgent_RecreatesMissingWorktree(t *testing.T) {
 	os.MkdirAll(agentHome, 0755)
 
 	// Create a worktree (simulating a successful first provision)
-	if err := util.CreateWorktree(agentWorkspace, agentName); err != nil {
+	if err := util.CreateWorktree(agentWorkspace, agentName, ""); err != nil {
 		t.Fatalf("CreateWorktree failed: %v", err)
 	}
 

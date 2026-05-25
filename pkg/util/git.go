@@ -162,8 +162,39 @@ func IsIgnored(dir, path string) bool {
 	return err == nil
 }
 
+// DefaultBranch returns the default branch name for the repository at the given path.
+// It uses "git symbolic-ref refs/remotes/origin/HEAD" to find the remote's default
+// branch (e.g., "main" or "opencode-support"). Falls back to the current HEAD branch
+// name if the remote HEAD reference is not set.
+func DefaultBranch(dir string) string {
+	args := []string{"symbolic-ref", "--short", "refs/remotes/origin/HEAD"}
+	cmd := exec.Command("git", args...)
+	if dir != "" {
+		cmd.Dir = dir
+	}
+	output, err := cmd.Output()
+	if err == nil {
+		branch := strings.TrimSpace(string(output))
+		if branch != "" {
+			return branch
+		}
+	}
+	// Fallback: use the current HEAD branch name
+	cmd = exec.Command("git", "symbolic-ref", "--short", "HEAD")
+	if dir != "" {
+		cmd.Dir = dir
+	}
+	output, err = cmd.Output()
+	if err == nil {
+		return strings.TrimSpace(string(output))
+	}
+	return "main"
+}
+
 // CreateWorktree creates a new git worktree at the specified path with a new branch.
-func CreateWorktree(path, branch string) error {
+// If source is non-empty, it is used as the commit-ish to point the new branch at
+// (e.g. "origin/opencode-support"), otherwise HEAD is used.
+func CreateWorktree(path, branch, source string) error {
 	// Guard: refuse to create worktrees inside an agent container.
 	// SCION_HOST_UID is set by the runtime when launching containers.
 	// Creating worktrees inside containers produces path-identity mismatches
@@ -183,15 +214,25 @@ func CreateWorktree(path, branch string) error {
 	}
 	root := filepath.Dir(commonDir)
 
-	// git worktree add --relative-paths -b <branch> <path>
+	// git worktree add --relative-paths -b <branch> <path> [<commit-ish>]
 	// We run from root to ensure --relative-paths are calculated from root
-	cmd := exec.Command("git", "worktree", "add", "--relative-paths", "-b", branch, path)
+	args := []string{"worktree", "add", "--relative-paths", "-b", branch, path}
+	if source != "" {
+		args = append(args, source)
+	}
+	cmd := exec.Command("git", args...)
 	cmd.Dir = root
 	if output, err := cmd.CombinedOutput(); err != nil {
 		outputStr := string(output)
 		// If branch already exists, try to just add it
 		if strings.Contains(outputStr, "already exists") {
-			cmd = exec.Command("git", "worktree", "add", "--relative-paths", path, branch)
+			cmdArgs := []string{"worktree", "add", "--relative-paths", path}
+			if source != "" {
+				cmdArgs = append(cmdArgs, source)
+			} else {
+				cmdArgs = append(cmdArgs, branch)
+			}
+			cmd = exec.Command("git", cmdArgs...)
 			cmd.Dir = root
 			if output, err := cmd.CombinedOutput(); err != nil {
 				outputStr = string(output)

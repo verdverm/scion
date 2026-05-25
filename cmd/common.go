@@ -64,6 +64,7 @@ var (
 	noAuth                bool
 	attach                bool
 	branch                string
+	source                string
 	workspace             string
 	runtimeBrokerID       string
 	harnessConfigFlag     string
@@ -430,6 +431,7 @@ func RunAgent(cmd *cobra.Command, args []string, resume bool) error {
 
 	// Apply inline config overrides to CLI options
 	effectiveBranch := branch
+	effectiveSource := source
 	effectiveTask := strings.TrimSpace(task)
 	effectiveHarnessConfig := harnessConfigFlag
 	effectiveHarnessAuth := harnessAuthFlag
@@ -437,6 +439,9 @@ func RunAgent(cmd *cobra.Command, args []string, resume bool) error {
 	if inlineCfg != nil {
 		if effectiveBranch == "" && inlineCfg.Branch != "" {
 			effectiveBranch = inlineCfg.Branch
+		}
+		if effectiveSource == "" && inlineCfg.Source != "" {
+			effectiveSource = inlineCfg.Source
 		}
 		if effectiveTask == "" && inlineCfg.Task != "" {
 			effectiveTask = inlineCfg.Task

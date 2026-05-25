@@ -49,6 +49,7 @@ func init() {
 	startCmd.Flags().BoolVarP(&attach, "attach", "a", false, "Attach to the agent TTY after starting")
 
 	startCmd.Flags().StringVarP(&branch, "branch", "b", "", "Git branch to use for the agent workspace")
+	startCmd.Flags().StringVar(&source, "source", "", "Source branch/tag/commit for the agent workspace (defaults to repo default branch)")
 
 	startCmd.Flags().StringVarP(&workspace, "workspace", "w", "", "Host path to mount as /workspace")
 

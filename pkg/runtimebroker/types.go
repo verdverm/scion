@@ -382,6 +382,7 @@ type CreateAgentConfig struct {
 	CommandArgs   []string              `json:"commandArgs,omitempty"`
 	Profile       string                `json:"profile,omitempty"` // Settings profile for the runtime broker
 	Branch        string                `json:"branch,omitempty"`  // Git branch name (defaults to agent slug if empty)
+	Source        string                `json:"source,omitempty"`  // Source branch/tag/commit for workspace content
 	Kubernetes    *api.KubernetesConfig `json:"kubernetes,omitempty"`
 
 	// TemplateID is the Hub template ID for cache lookup.

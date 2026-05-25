@@ -196,6 +196,7 @@ type CreateAgentRequest struct {
 	Profile         string            `json:"profile,omitempty"`       // Settings profile for the runtime broker to use
 	Task            string            `json:"task,omitempty"`
 	Branch          string            `json:"branch,omitempty"`
+	Source          string            `json:"source,omitempty"`
 	Workspace       string            `json:"workspace,omitempty"`
 	Labels          map[string]string `json:"labels,omitempty"`
 	Config          *api.ScionConfig  `json:"config,omitempty"`
@@ -3794,10 +3795,7 @@ func (s *Server) cloneSharedWorkspaceProject(ctx context.Context, project *store
 	// Only convert to HTTPS if the URL looks like a remote git URL.
 	cloneURL := resolveCloneURL(project.Labels["scion.dev/clone-url"], project.GitRemote)
 
-	defaultBranch := project.Labels["scion.dev/default-branch"]
-	if defaultBranch == "" {
-		defaultBranch = "main"
-	}
+	defaultBranch := s.resolveDefaultBranch(cloneURL, project.Labels["scion.dev/default-branch"])
 
 	// Resolve a token for authentication.
 	token := s.resolveCloneToken(ctx, project)
@@ -8527,6 +8525,7 @@ func (s *Server) buildAppliedConfig(req CreateAgentRequest, harnessConfig string
 		Task:          req.Task,
 		Attach:        req.Attach,
 		Branch:        req.Branch,
+		Source:        req.Source,
 		Workspace:     req.Workspace,
 		CreatorName:   creatorName,
 	}
@@ -8567,10 +8566,7 @@ func (s *Server) populateAgentConfig(agent *store.Agent, project *store.Project,
 	// Shared-workspace git projects skip clone — agents mount the shared workspace instead.
 	if project != nil && project.GitRemote != "" && !project.IsSharedWorkspace() {
 		cloneURL := resolveCloneURL(project.Labels["scion.dev/clone-url"], project.GitRemote)
-		defaultBranch := project.Labels["scion.dev/default-branch"]
-		if defaultBranch == "" {
-			defaultBranch = "main"
-		}
+		defaultBranch := s.resolveDefaultBranch(cloneURL, project.Labels["scion.dev/default-branch"])
 		agent.AppliedConfig.GitClone = &api.GitCloneConfig{
 			URL:    cloneURL,
 			Branch: defaultBranch,
@@ -8589,10 +8585,8 @@ func (s *Server) populateAgentConfig(agent *store.Agent, project *store.Project,
 	// For shared-workspace git projects, default the branch to the project's
 	// default branch (the workspace's current branch) instead of the agent slug.
 	if project != nil && project.IsSharedWorkspace() && agent.AppliedConfig.Branch == "" {
-		defaultBranch := project.Labels["scion.dev/default-branch"]
-		if defaultBranch == "" {
-			defaultBranch = "main"
-		}
+		cloneURL := resolveCloneURL(project.Labels["scion.dev/clone-url"], project.GitRemote)
+		defaultBranch := s.resolveDefaultBranch(cloneURL, project.Labels["scion.dev/default-branch"])
 		agent.AppliedConfig.Branch = defaultBranch
 	}
 
